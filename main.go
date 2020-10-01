@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 
 	_ "github.com/joho/godotenv/autoload" // autoload configuration
 	"golang.org/x/oauth2"
@@ -17,7 +19,6 @@ import (
 	"github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
 	"github.com/mvandergrift/energy-sdk/healthmate"
-	"github.com/mvandergrift/energy-sdk/model"
 	"github.com/mvandergrift/energy-sdk/repo"
 )
 
@@ -29,11 +30,13 @@ func main() {
 
 	getNewAuth := flag.Bool("auth", false, "Reauthenticate access to appliaction")
 	debugFlag := flag.Bool("debug", false, "Debug database access")
+	helpFlag := flag.Bool("help", false, "Show help")
 	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
 	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
+	// todo #3 Flag specifies list of types to retrieve @mvandergrift
 	flag.Parse()
 
-	if *startDate == "" || *endDate == "" {
+	if *helpFlag {
 		flag.PrintDefaults()
 		return
 	}
@@ -42,7 +45,7 @@ func main() {
 	check("OpenCn", err)
 	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
 
-	if *getNewAuth {
+	if *getNewAuth { // todo #4 Transfer api authentication to user facing application @mvandergrift
 		fmt.Println("Visit link to authorize account: ", hc.GetAuthCodeURL())
 		fmt.Print("Enter authorization code: ")
 		var code string
@@ -53,14 +56,32 @@ func main() {
 		check("SaveToken", err)
 	}
 
-	// token, err = auth.LoadToken("withing.json")
-	// check("LoadToken", err)
+	workouts := GetWorkouts(*startDate, *endDate, "healthmate", hc)
+	workoutRepo := repo.NewWorkoutRepo(cn)
+	fmt.Printf("Found %v workouts\n", len(workouts))
 
+	for _, v := range workouts {
+		v.Display()
+		w, err := v.ExportWorkout()
+		check("ExportWorkout", err)
+		check("WorkoutRepo.Save", workoutRepo.Save(&w))
+
+	}
+}
+
+// todo #1 Factory pattern supports multiple data vendors @mvandergrift
+func GetWorkouts(startDate string, endDate string, provider string, hc healthmate.Client) []healthmate.Export {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
-	payload.Set("startdateymd", *startDate)
-	payload.Set("enddateymd", *endDate)
-	//payload.Set("lastupdate", "1538325667")
+
+	if startDate != "" && endDate != "" {
+		payload.Set("startdateymd", startDate)
+		payload.Set("enddateymd", endDate)
+	} else {
+		last := strconv.FormatInt(time.Now().Add(48*time.Hour*-1).Unix(), 10)
+		log.Println("last", last)
+		payload.Set("lastupdate", last)
+	}
 
 	client, err := NewHTTPClient(hc, "withing.json")
 	check("NewHTTPClient", err)
@@ -75,17 +96,14 @@ func main() {
 	err = json.Unmarshal(body, &result)
 	check("Unmarshal request", err)
 
-	workoutRepo := repo.NewWorkoutRepo(cn)
-
-	fmt.Printf("Found %v workouts\n", len(result.Body.Series))
-
-	series := result.Body.Series
-	for k, v := range series {
-		w, err := model.NewWorkoutFromHealthmate(v)
-		check("NewWorkoutFromHealthMate", err)
-		check("WorkoutRepo.Save", workoutRepo.Save(&w))
-		log.Printf("%v:%v [%v]", k, w.Date, w.ID)
+	retval := make([]healthmate.Export, len(result.Body.Series))
+	for k, v := range result.Body.Series {
+		retval[k] = v
 	}
+
+	return retval
+
+	//return result.Body.Series
 }
 
 /*
