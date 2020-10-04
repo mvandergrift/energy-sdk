@@ -19,6 +19,10 @@ import (
 	"github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
 	"github.com/mvandergrift/energy-sdk/healthmate"
+	"github.com/mvandergrift/energy-sdk/healthmate/measure"
+	"github.com/mvandergrift/energy-sdk/healthmate/workout"
+
+	"github.com/mvandergrift/energy-sdk/model"
 	"github.com/mvandergrift/energy-sdk/repo"
 )
 
@@ -33,7 +37,6 @@ func main() {
 	helpFlag := flag.Bool("help", false, "Show help")
 	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
 	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
-	// todo #3 Flag specifies list of types to retrieve @mvandergrift
 	flag.Parse()
 
 	if *helpFlag {
@@ -56,23 +59,32 @@ func main() {
 		check("SaveToken", err)
 	}
 
-	workouts := GetWorkouts(*startDate, *endDate, "healthmate", hc)
-	workoutRepo := repo.NewWorkoutRepo(cn)
-	fmt.Printf("Found %v workouts\n", len(workouts))
+	// todo #3 Flag specifies list of types to retrieve @mvandergrift
+	result := GetMeasure(*startDate, *endDate, hc)
+	result = append(result, GetWorkouts(*startDate, *endDate, hc)...)
 
-	for _, v := range workouts {
-		v.Display()
-		w, err := v.ExportWorkout()
-		check("ExportWorkout", err)
-		check("WorkoutRepo.Save", workoutRepo.Save(&w))
+	for _, v := range result {
+		k, err := v.Export()
+		check("Export", err)
+		log.Println("Saving", v)
 
+		switch modelExport := k.(type) {
+		case model.Workout:
+			workoutRepo := repo.NewWorkoutRepo(cn)
+			check("workoutRepo.save", workoutRepo.Save(&modelExport))
+		case model.Measure:
+			measureRepo := repo.NewMeasureRepo(cn)
+			check("measureRepo.save", measureRepo.Save(&modelExport))
+		default:
+		}
 	}
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetWorkouts(startDate string, endDate string, provider string, hc healthmate.Client) []healthmate.Export {
+func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model.Export {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
+	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
 
 	if startDate != "" && endDate != "" {
 		payload.Set("startdateymd", startDate)
@@ -83,27 +95,47 @@ func GetWorkouts(startDate string, endDate string, provider string, hc healthmat
 		payload.Set("lastupdate", last)
 	}
 
-	client, err := NewHTTPClient(hc, "withing.json")
-	check("NewHTTPClient", err)
-	resp, err := client.PostForm("https://wbsapi.withings.net/v2/measure", payload)
-	check("Request workouts", err)
-	defer resp.Request.Body.Close()
+	var result workout.Result
+	check("ProcessHealthmateRequest", ProcessHealthmateRequest(hc, payload, &result))
 
-	body, err := ioutil.ReadAll(resp.Body)
-	check("Read request body", err)
-
-	var result healthmate.WorkoutResult
-	err = json.Unmarshal(body, &result)
-	check("Unmarshal request", err)
-
-	retval := make([]healthmate.Export, len(result.Body.Series))
+	retval := make([]model.Export, len(result.Body.Series))
 	for k, v := range result.Body.Series {
 		retval[k] = v
 	}
 
 	return retval
+}
 
-	//return result.Body.Series
+// todo #1 Factory pattern supports multiple data vendors @mvandergrift
+func GetMeasure(startDate string, endDate string, hc healthmate.Client) []model.Export {
+	payload := url.Values{}
+	payload.Set("action", "getmeas")
+	payload.Set("meastypes", "1,6,4,11")
+
+	if startDate != "" && endDate != "" {
+		unixStart, _ := time.Parse("2006-01-02", startDate)
+		unixEnd, _ := time.Parse("2006-01-02", endDate)
+		payload.Set("startdate", strconv.FormatInt(unixStart.Unix(), 10))
+		payload.Set("enddate", strconv.FormatInt(unixEnd.Unix(), 10))
+	} else {
+		last := strconv.FormatInt(time.Now().Add(168*time.Hour*-1).Unix(), 10)
+		log.Println("last", last)
+		payload.Set("lastupdate", last)
+	}
+
+	var result measure.Result
+	check("ProcessHealthmateRequest", ProcessHealthmateRequest(hc, payload, &result))
+
+	var retval []model.Export
+	for _, group := range result.Body.Measuregrps {
+		for _, measure := range group.Measures {
+			measure.Date = group.Date
+			measure.Grpid = group.Grpid
+			retval = append(retval, measure)
+		}
+	}
+
+	return retval
 }
 
 /*
@@ -119,6 +151,37 @@ func NewHTTPClient(c healthmate.Client, cachedTokenPath string) (*http.Client, e
 	tokenSource := auth.RefreshToken(token, c.OAuth2Config, cachedTokenPath)
 	client := oauth2.NewClient(context.Background(), *tokenSource)
 	return client, nil
+}
+
+func ProcessHealthmateRequest(hc healthmate.Client, payload url.Values, v interface{}) error {
+	client, err := NewHTTPClient(hc, "withing.json")
+	if err != nil {
+		return fmt.Errorf("NewHTTPClient %w", err)
+	}
+
+	resp, err := client.PostForm("https://wbsapi.withings.net/v2/measure", payload)
+	if err != nil {
+		return fmt.Errorf("PostForm %w", err)
+	}
+
+	defer resp.Request.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("ioutil.ReadAll %w", err)
+	}
+
+	err = ioutil.WriteFile("debug.json", body, 0644)
+	if err != nil {
+		return fmt.Errorf("WriteFile (debug) %w", err)
+	}
+
+	err = json.Unmarshal(body, v)
+	if err != nil {
+		return fmt.Errorf("Unmarshal %w", err)
+	}
+
+	return nil
 }
 
 func check(subject string, err error) {
