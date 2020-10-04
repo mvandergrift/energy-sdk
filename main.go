@@ -26,6 +26,8 @@ import (
 	"github.com/mvandergrift/energy-sdk/repo"
 )
 
+var debugFlag *bool
+
 func main() {
 	var (
 		token *oauth2.Token
@@ -33,10 +35,11 @@ func main() {
 	)
 
 	getNewAuth := flag.Bool("auth", false, "Reauthenticate access to appliaction")
-	debugFlag := flag.Bool("debug", false, "Debug database access")
+	debugFlag = flag.Bool("debug", false, "Debug database access")
 	helpFlag := flag.Bool("help", false, "Show help")
 	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
 	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
+	typeFilter := flag.String("type", "", "Integration type to retrieve (workout, measure, etc)")
 	flag.Parse()
 
 	if *helpFlag {
@@ -59,9 +62,13 @@ func main() {
 		check("SaveToken", err)
 	}
 
-	// todo #3 Flag specifies list of types to retrieve @mvandergrift
-	result := GetMeasure(*startDate, *endDate, hc)
-	result = append(result, GetWorkouts(*startDate, *endDate, hc)...)
+	var result []model.Export
+	if *typeFilter == "" || *typeFilter == "measure" {
+		result = append(result, GetMeasure(*startDate, *endDate, hc)...)
+	}
+	if *typeFilter == "" || *typeFilter == "workout" {
+		result = append(result, GetWorkouts(*startDate, *endDate, hc)...)
+	}
 
 	for _, v := range result {
 		k, err := v.Export()
@@ -171,9 +178,11 @@ func ProcessHealthmateRequest(hc healthmate.Client, payload url.Values, v interf
 		return fmt.Errorf("ioutil.ReadAll %w", err)
 	}
 
-	err = ioutil.WriteFile("debug.json", body, 0644)
-	if err != nil {
-		return fmt.Errorf("WriteFile (debug) %w", err)
+	if *debugFlag {
+		err = ioutil.WriteFile("debug.json", body, 0644)
+		if err != nil {
+			return fmt.Errorf("WriteFile (debug) %w", err)
+		}
 	}
 
 	err = json.Unmarshal(body, v)
