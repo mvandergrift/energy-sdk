@@ -23,9 +23,9 @@ func RefreshToken(token *oauth2.Token, conf *oauth2.Config, filePath string) *oa
 		if err != nil {
 			log.Fatalln("SaveToken:", err)
 		}
-		log.Println("Saved new token:", newToken)
+		//log.Println("Saved new token:", newToken)
 	} else {
-		log.Println("Reusing tokent", newToken)
+		//log.Println("Reusing tokent", newToken)
 	}
 
 	return &tokenSource
