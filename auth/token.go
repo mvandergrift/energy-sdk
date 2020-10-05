@@ -19,13 +19,11 @@ func RefreshToken(token *oauth2.Token, conf *oauth2.Config, filePath string) *oa
 	}
 
 	if newToken.AccessToken != token.AccessToken {
+		// save new access &refresh token
 		err := SaveToken(newToken, filePath)
 		if err != nil {
 			log.Fatalln("SaveToken:", err)
 		}
-		//log.Println("Saved new token:", newToken)
-	} else {
-		//log.Println("Reusing tokent", newToken)
 	}
 
 	return &tokenSource
