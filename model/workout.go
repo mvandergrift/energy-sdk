@@ -7,6 +7,7 @@ import (
 type Workout struct {
 	ID          int
 	Date        time.Time `gorm:"column:activity_date"`
+	Timezone    string
 	ActivityID  int
 	UserID      int
 	Duration    float64

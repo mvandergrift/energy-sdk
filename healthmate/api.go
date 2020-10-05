@@ -4,9 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/mvandergrift/energy-sdk/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -85,4 +91,52 @@ func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 	token, err = c.OAuth2Config.Exchange(ctx, code)
 
 	return token, err
+}
+
+/*
+Returns a new HTTPClient based on the Healthmate OAuth2 client & configurations. Uses
+the cachedTokenPath to load and store the access token needed for api authentication
+*/
+func NewHTTPClient(c Client, cachedTokenPath string) (*http.Client, error) {
+	token, err := auth.LoadToken(cachedTokenPath)
+	if err != nil {
+		return nil, err
+	}
+
+	tokenSource := auth.RefreshToken(token, c.OAuth2Config, cachedTokenPath)
+	client := oauth2.NewClient(context.Background(), *tokenSource)
+	return client, nil
+}
+
+func ProcessRequest(hc Client, payload url.Values, v interface{}) error {
+	client, err := NewHTTPClient(hc, "withing.json")
+	if err != nil {
+		return fmt.Errorf("NewHTTPClient %w", err)
+	}
+
+	resp, err := client.PostForm("https://wbsapi.withings.net/v2/measure", payload)
+	if err != nil {
+		return fmt.Errorf("PostForm %w", err)
+	}
+
+	defer resp.Request.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("ioutil.ReadAll %w", err)
+	}
+
+	// if *debugFlag {
+	// 	err = ioutil.WriteFile("debug.json", body, 0644)
+	// 	if err != nil {
+	// 		return fmt.Errorf("WriteFile (debug) %w", err)
+	// 	}
+	// }
+
+	err = json.Unmarshal(body, v)
+	if err != nil {
+		return fmt.Errorf("Unmarshal %w", err)
+	}
+
+	return nil
 }
