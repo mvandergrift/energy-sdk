@@ -1,29 +1,27 @@
-package measure
+package healthmate
 
 import (
 	"fmt"
 	"math"
 
-	"github.com/mvandergrift/energy-sdk/healthmate"
 	"github.com/mvandergrift/energy-sdk/model"
 )
 
-type Result struct {
+type MeasureResult struct {
 	Status int64 `json:"status"`
 	Body   struct {
-		Updatetime healthmate.Timestamp `json:"updatetime"`
-		Timezone   string               `json:"timezone"`
-		//	Measuregrps []Measuregrp         `json:"measuregrps"`
+		Updatetime  Timestamp `json:"updatetime"`
+		Timezone    string    `json:"timezone"`
 		Measuregrps []struct {
-			Grpid        int64                `json:"grpid"`
-			Attrib       int64                `json:"attrib"`
-			Date         healthmate.Timestamp `json:"date"`
-			Created      healthmate.Timestamp `json:"created"`
-			Category     int64                `json:"category"`
-			Deviceid     string               `json:"deviceid"`
-			HashDeviceid string               `json:"hash_deviceid"`
-			Measures     []Measure            `json:"measures"`
-			Comment      string               `json:"comment"`
+			Grpid        int64     `json:"grpid"`
+			Attrib       int64     `json:"attrib"`
+			Date         Timestamp `json:"date"`
+			Created      Timestamp `json:"created"`
+			Category     int64     `json:"category"`
+			Deviceid     string    `json:"deviceid"`
+			HashDeviceid string    `json:"hash_deviceid"`
+			Measures     []Measure `json:"measures"`
+			Comment      string    `json:"comment"`
 		} `json:"measuregrps"`
 	} `json:"body"`
 }
@@ -32,7 +30,7 @@ type Measure struct {
 	Value       int64 `json:"value"`
 	Type        int64 `json:"type"`
 	Unit        int64 `json:"unit"`
-	Date        healthmate.Timestamp
+	Date        Timestamp
 	Grpid       int64
 	AttributeID int64
 }
