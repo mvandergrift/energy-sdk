@@ -83,7 +83,7 @@ func main() {
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model.Export {
+func GetWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
 	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
@@ -97,7 +97,10 @@ func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model
 	}
 
 	var result healthmate.WorkoutResult
-	check("ProcessHealthmateRequest", healthmate.ProcessRequest(hc, payload, &result))
+	err := healthmate.ProcessRequest(hc, payload, &result)
+	if err := nil {
+		return err
+	}
 
 	retval := make([]model.Export, len(result.Body.Series))
 	for k, v := range result.Body.Series {
@@ -108,7 +111,7 @@ func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetMeasure(startDate string, endDate string, hc healthmate.Client) []model.Export {
+func GetMeasure(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getmeas")
 	payload.Set("meastypes", "1,6,4,11")
