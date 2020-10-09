@@ -9,12 +9,19 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
+	_ "github.com/joho/godotenv/autoload" // autoload configuration
+
+	"github.com/jinzhu/gorm"
 	"github.com/mvandergrift/energy-sdk/auth"
+	"github.com/mvandergrift/energy-sdk/driver"
 	"golang.org/x/oauth2"
 )
+
+const debug = false
 
 var (
 	// DefaultScopes is describes all available Health Mate scopes.
@@ -97,19 +104,20 @@ func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 Returns a new HTTPClient based on the Healthmate OAuth2 client & configurations. Uses
 the cachedTokenPath to load and store the access token needed for api authentication
 */
-func NewHTTPClient(c Client, cachedTokenPath string) (*http.Client, error) {
-	token, err := auth.LoadToken(cachedTokenPath)
+func NewHTTPClient(c Client) (*http.Client, error) {
+	db := getDb()
+	token, err := auth.LoadToken(db)
 	if err != nil {
 		return nil, err
 	}
 
-	tokenSource := auth.RefreshToken(token, c.OAuth2Config, cachedTokenPath)
+	tokenSource := auth.RefreshToken(token, c.OAuth2Config, db)
 	client := oauth2.NewClient(context.Background(), *tokenSource)
 	return client, nil
 }
 
 func ProcessRequest(hc Client, payload url.Values, v interface{}) error {
-	client, err := NewHTTPClient(hc, "withing.json")
+	client, err := NewHTTPClient(hc)
 	if err != nil {
 		return fmt.Errorf("NewHTTPClient %w", err)
 	}
@@ -139,4 +147,13 @@ func ProcessRequest(hc Client, payload url.Values, v interface{}) error {
 	}
 
 	return nil
+}
+
+func getDb() *gorm.DB {
+	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), debug)
+	if err != nil {
+		panic(fmt.Sprintf("Cannot connect to token DB: %v", err))
+	}
+
+	return db
 }

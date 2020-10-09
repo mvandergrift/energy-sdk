@@ -1,0 +1,40 @@
+service: energy-sdk
+
+provider:
+    name: aws
+    runtime: go1.x
+    memorySize: 512
+    timeout: 60
+    vpc:
+        securityGroupIds:
+            - sg-bd2c65db
+        subnetIds:
+            - subnet-09b8d868e87c9604f
+            - subnet-000f2ba0154516547
+    environment:
+        DEBUG: FALSE
+        DB_HOST: db.strategic-dev.com
+        DB_USER: energy
+        DB_PWD: secret123
+        DB_PORT: 5432
+        DB_DATABASE: energy
+        CLIENT_ID: e4da368b8b14d8655a720cb772a30844ae3507559bf41194993889611f6c0666
+        CLIENT_SECRET: 0c346b7508f3e94481d1437b9ca5eb828f2dfead5e0b4c8e51eedef11aeaa533
+        CALLBACK_URL: https://energy.strategic-dev.com/register
+
+package:
+    exclude:
+        - ./**
+    include:
+        - ./bin/**
+
+functions:
+    update:
+        handler: bin/energy-sdk
+        events:
+            - schedule:
+                  name: "Update"
+                  # Run every 10 minutes, Monday through Friday, between 9am and 4pm
+                  rate: rate(5 minutes)
+                  #input: '{"detail": {"type": "intraday", "symbols": ["AAPL","MSFT", "SPY", "IWM", "RDS.B", "RA", "GOOG", "HYG", "QQQ"]}}'
+                  #input: '{"detail": {"type": "intraday", "symbols": []}}'
