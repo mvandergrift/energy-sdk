@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -9,10 +10,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-lambda-go/lambda"
 	_ "github.com/joho/godotenv/autoload" // autoload configuration
 	"golang.org/x/oauth2"
 
-	"github.com/mvandergrift/energy-sdk/auth"
+	tokenAuth "github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
 	"github.com/mvandergrift/energy-sdk/healthmate"
 
@@ -24,73 +26,8 @@ const defaultHoursBack = 144
 
 var debugFlag *bool
 
-func main() {
-	var (
-		token *oauth2.Token
-		err   error
-	)
-
-	getNewAuth := flag.Bool("auth", false, "Reauthenticate access to appliaction")
-	debugFlag = flag.Bool("debug", false, "Debug database access")
-	helpFlag := flag.Bool("help", false, "Show help")
-	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
-	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
-	typeFilter := flag.String("type", "", "Integration type to retrieve (workout, measure, etc)")
-	flag.Parse()
-
-	if *helpFlag {
-		flag.PrintDefaults()
-		return
-	}
-
-	cn, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), *debugFlag)
-	check("OpenCn", err)
-	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
-
-	if *getNewAuth { // todo #4 Transfer api authentication to user facing application @mvandergrift
-		fmt.Println("Visit link to authorize account: ", hc.GetAuthCodeURL())
-		fmt.Print("Enter authorization code: ")
-		var code string
-		fmt.Scan(&code)
-		token, err = hc.GetAccessToken(code)
-		check("Get access token", err)
-		err = auth.SaveToken(token, "withing.json")
-		check("SaveToken", err)
-	}
-
-	var result []model.Export
-	if *typeFilter == "" || *typeFilter == "measure" {
-		measure, err := GetMeasure(*startDate, *endDate, hc)
-		check("GetMeasure", err)
-		result = append(measure, result...)
-	}
-
-	if *typeFilter == "" || *typeFilter == "workout" {
-		workouts, err := GetWorkouts(*startDate, *endDate, hc)
-		check("GetWorkouts", err)
-		result = append(workouts, result...)
-	}
-
-	for _, v := range result {
-		k, err := v.Export()
-		check("Export", err)
-		log.Println(v)
-
-		switch modelExport := k.(type) {
-		case model.Workout:
-			workoutRepo := repo.NewWorkoutRepo(cn)
-			check("workoutRepo.save", workoutRepo.Save(&modelExport))
-		case model.Measure:
-			measureRepo := repo.NewMeasureRepo(cn)
-			check("measureRepo.save", measureRepo.Save(&modelExport))
-		default:
-			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
-		}
-	}
-}
-
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
+func getWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
 	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
@@ -118,7 +55,7 @@ func GetWorkouts(startDate string, endDate string, hc healthmate.Client) ([]mode
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetMeasure(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
+func getMeasure(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getmeas")
 	payload.Set("meastypes", "1,6,4,11")
@@ -148,6 +85,120 @@ func GetMeasure(startDate string, endDate string, hc healthmate.Client) ([]model
 	}
 
 	return retval, nil
+}
+
+func main() {
+	if os.Getenv("_LAMBDA_SERVER_PORT") != "" {
+		lambda.Start(Handler)
+	} else {
+		start()
+	}
+}
+
+func Handler(ctx context.Context, detail interface{}) error {
+	var (
+		err error
+	)
+
+	startDate := ""
+	endDate := ""
+
+	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), false)
+	check("OpenCn", err)
+	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
+
+	var result []model.Export
+	measure, err := getMeasure(startDate, endDate, hc)
+	check("GetMeasure", err)
+	result = append(measure, result...)
+
+	workouts, err := getWorkouts(startDate, endDate, hc)
+	check("GetWorkouts", err)
+	result = append(workouts, result...)
+
+	for _, v := range result {
+		k, err := v.Export()
+		check("Export", err)
+		log.Println(v)
+
+		switch modelExport := k.(type) {
+		case model.Workout:
+			workoutRepo := repo.NewWorkoutRepo(db)
+			check("workoutRepo.save", workoutRepo.Save(&modelExport))
+		case model.Measure:
+			measureRepo := repo.NewMeasureRepo(db)
+			check("measureRepo.save", measureRepo.Save(&modelExport))
+		default:
+			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
+		}
+	}
+
+	return err
+}
+
+func start() {
+	var (
+		token *oauth2.Token
+		err   error
+	)
+
+	getNewAuth := flag.Bool("auth", false, "Reauthenticate access to appliaction")
+	debugFlag = flag.Bool("debug", false, "Debug database access")
+	helpFlag := flag.Bool("help", false, "Show help")
+	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
+	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
+	typeFilter := flag.String("type", "", "Integration type to retrieve (workout, measure, etc)")
+	flag.Parse()
+
+	if *helpFlag {
+		flag.PrintDefaults()
+		return
+	}
+
+	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), *debugFlag)
+	check("OpenCn", err)
+	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
+
+	if *getNewAuth { // todo #4 Transfer api authentication to user facing application @mvandergrift
+		fmt.Println("Visit link to authorize account: ", hc.GetAuthCodeURL())
+		fmt.Print("Enter authorization code: ")
+		var code string
+		fmt.Scan(&code)
+		token, err = hc.GetAccessToken(code)
+		check("Get access token", err)
+		err = tokenAuth.SaveToken(token, db)
+		check("SaveToken", err)
+	}
+
+	var result []model.Export
+	if *typeFilter == "" || *typeFilter == "measure" {
+		measure, err := getMeasure(*startDate, *endDate, hc)
+		check("GetMeasure", err)
+		result = append(measure, result...)
+	}
+
+	if *typeFilter == "" || *typeFilter == "workout" {
+		workouts, err := getWorkouts(*startDate, *endDate, hc)
+		check("GetWorkouts", err)
+		result = append(workouts, result...)
+	}
+
+	for _, v := range result {
+		k, err := v.Export()
+		check("Export", err)
+		log.Println(v)
+
+		switch modelExport := k.(type) {
+		case model.Workout:
+			workoutRepo := repo.NewWorkoutRepo(db)
+			check("workoutRepo.save", workoutRepo.Save(&modelExport))
+		case model.Measure:
+			measureRepo := repo.NewMeasureRepo(db)
+			check("measureRepo.save", measureRepo.Save(&modelExport))
+		default:
+			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
+		}
+	}
 }
 
 func check(subject string, err error) {

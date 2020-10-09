@@ -16,6 +16,7 @@ func OpenCn(host string, port string, user string, password string, dbName strin
 		return nil, fmt.Errorf("db connection failed: %w", err)
 	}
 
+	db.SingularTable(true)
 	db.LogMode(debug)
 	return db, nil
 }
