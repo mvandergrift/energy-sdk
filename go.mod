@@ -3,6 +3,7 @@ module github.com/mvandergrift/energy-sdk
 go 1.14
 
 require (
+	github.com/aws/aws-lambda-go v1.19.1
 	github.com/jinzhu/gorm v1.9.16
 	github.com/joho/godotenv v1.3.0
 	github.com/lib/pq v1.1.1
