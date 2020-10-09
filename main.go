@@ -20,6 +20,8 @@ import (
 	"github.com/mvandergrift/energy-sdk/repo"
 )
 
+const defaultHoursBack = 144
+
 var debugFlag *bool
 
 func main() {
@@ -58,10 +60,15 @@ func main() {
 
 	var result []model.Export
 	if *typeFilter == "" || *typeFilter == "measure" {
-		result = append(result, GetMeasure(*startDate, *endDate, hc)...)
+		measure, err := GetMeasure(*startDate, *endDate, hc)
+		check("GetMeasure", err)
+		result = append(measure, result...)
 	}
+
 	if *typeFilter == "" || *typeFilter == "workout" {
-		result = append(result, GetWorkouts(*startDate, *endDate, hc)...)
+		workouts, err := GetWorkouts(*startDate, *endDate, hc)
+		check("GetWorkouts", err)
+		result = append(workouts, result...)
 	}
 
 	for _, v := range result {
@@ -83,7 +90,7 @@ func main() {
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model.Export {
+func GetWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
 	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
@@ -92,23 +99,26 @@ func GetWorkouts(startDate string, endDate string, hc healthmate.Client) []model
 		payload.Set("startdateymd", startDate)
 		payload.Set("enddateymd", endDate)
 	} else {
-		last := strconv.FormatInt(time.Now().Add(72*time.Hour*-1).Unix(), 10)
+		last := strconv.FormatInt(time.Now().Add(defaultHoursBack*time.Hour*-1).Unix(), 10)
 		payload.Set("lastupdate", last)
 	}
 
 	var result healthmate.WorkoutResult
-	check("ProcessHealthmateRequest", healthmate.ProcessRequest(hc, payload, &result))
+	err := healthmate.ProcessRequest(hc, payload, &result)
+	if err != nil {
+		return nil, err
+	}
 
 	retval := make([]model.Export, len(result.Body.Series))
 	for k, v := range result.Body.Series {
 		retval[k] = v
 	}
 
-	return retval
+	return retval, nil
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func GetMeasure(startDate string, endDate string, hc healthmate.Client) []model.Export {
+func GetMeasure(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getmeas")
 	payload.Set("meastypes", "1,6,4,11")
@@ -120,7 +130,7 @@ func GetMeasure(startDate string, endDate string, hc healthmate.Client) []model.
 		payload.Set("startdate", strconv.FormatInt(unixStart.Unix(), 10))
 		payload.Set("enddate", strconv.FormatInt(unixEnd.Unix(), 10))
 	} else {
-		last := strconv.FormatInt(time.Now().Add(72*time.Hour*-1).Unix(), 10)
+		last := strconv.FormatInt(time.Now().Add(defaultHoursBack*time.Hour*-1).Unix(), 10)
 		payload.Set("lastupdate", last)
 	}
 
@@ -137,7 +147,7 @@ func GetMeasure(startDate string, endDate string, hc healthmate.Client) []model.
 		}
 	}
 
-	return retval
+	return retval, nil
 }
 
 func check(subject string, err error) {
