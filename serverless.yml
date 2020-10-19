@@ -34,7 +34,4 @@ functions:
         events:
             - schedule:
                   name: "Update"
-                  # Run every 10 minutes, Monday through Friday, between 9am and 4pm
-                  rate: rate(5 minutes)
-                  #input: '{"detail": {"type": "intraday", "symbols": ["AAPL","MSFT", "SPY", "IWM", "RDS.B", "RA", "GOOG", "HYG", "QQQ"]}}'
-                  #input: '{"detail": {"type": "intraday", "symbols": []}}'
+                  rate: rate(15 minutes)

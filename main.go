@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -24,7 +25,54 @@ import (
 
 const defaultHoursBack = 144
 
-var debugFlag *bool
+func Handler(ctx context.Context, detail interface{}) error {
+	var (
+		err error
+	)
+
+	startDate := ""
+	endDate := ""
+
+	var debugFlag bool
+	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		debugFlag = true
+	}
+
+	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), debugFlag)
+	check("OpenCn", err)
+	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
+
+	var result []model.Export
+	measure, err := getMeasure(startDate, endDate, hc)
+	check("GetMeasure", err)
+	result = append(measure, result...)
+
+	workouts, err := getWorkouts(startDate, endDate, hc)
+	check("GetWorkouts", err)
+	result = append(workouts, result...)
+
+	for _, v := range result {
+		k, err := v.Export()
+		check("Export", err)
+
+		if debugFlag {
+			log.Println(v)
+		}
+
+		switch modelExport := k.(type) {
+		case model.Workout:
+			workoutRepo := repo.NewWorkoutRepo(db)
+			check("workoutRepo.save", workoutRepo.Save(&modelExport))
+		case model.Measure:
+			measureRepo := repo.NewMeasureRepo(db)
+			check("measureRepo.save", measureRepo.Save(&modelExport))
+		default:
+			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
+		}
+	}
+
+	return err
+}
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
 func getWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
@@ -95,47 +143,6 @@ func main() {
 	}
 }
 
-func Handler(ctx context.Context, detail interface{}) error {
-	var (
-		err error
-	)
-
-	startDate := ""
-	endDate := ""
-
-	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), false)
-	check("OpenCn", err)
-	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
-
-	var result []model.Export
-	measure, err := getMeasure(startDate, endDate, hc)
-	check("GetMeasure", err)
-	result = append(measure, result...)
-
-	workouts, err := getWorkouts(startDate, endDate, hc)
-	check("GetWorkouts", err)
-	result = append(workouts, result...)
-
-	for _, v := range result {
-		k, err := v.Export()
-		check("Export", err)
-		log.Println(v)
-
-		switch modelExport := k.(type) {
-		case model.Workout:
-			workoutRepo := repo.NewWorkoutRepo(db)
-			check("workoutRepo.save", workoutRepo.Save(&modelExport))
-		case model.Measure:
-			measureRepo := repo.NewMeasureRepo(db)
-			check("measureRepo.save", measureRepo.Save(&modelExport))
-		default:
-			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
-		}
-	}
-
-	return err
-}
-
 func start() {
 	var (
 		token *oauth2.Token
@@ -143,7 +150,7 @@ func start() {
 	)
 
 	getNewAuth := flag.Bool("auth", false, "Reauthenticate access to appliaction")
-	debugFlag = flag.Bool("debug", false, "Debug database access")
+	debugFlag := flag.Bool("debug", false, "Debug database access")
 	helpFlag := flag.Bool("help", false, "Show help")
 	startDate := flag.String("start", "", "Start date in yyyy-mm-dd format")
 	endDate := flag.String("end", "", "End date in yyyy-mm-dd format")
