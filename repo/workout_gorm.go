@@ -23,7 +23,7 @@ func (db *gormCompanyRepo) Save(workout *model.Workout) error {
 		workout.StartTime,
 		*workout.ExternalID).Error
 
-	if err != nil {
+	if err != nil && err.Error() != "record not found" {
 		return err
 	}
 
