@@ -15,7 +15,19 @@ func NewWorkoutRepo(cn *gorm.DB) WorkoutRepo {
 
 func (db *gormCompanyRepo) Save(workout *model.Workout) error {
 	w := &model.Workout{} // initialize before use to allow use of TableName receiver
-	db.Cn.First(w, "external_id = ?", *workout.ExternalID)
+	err := db.Cn.First(w, "(user_id = ? AND activity_id = ? AND attribute_id = ? AND model_id = ? AND start_time = ? AND end_time = ?) OR (external_id = ?)",
+		workout.UserID,
+		workout.ActivityID,
+		workout.AttributeID,
+		workout.ModelID,
+		workout.StartTime,
+		workout.EndTime,
+		*workout.ExternalID).Error
+
+	if err != nil {
+		return err
+	}
+
 	workout.ID = w.ID // update workout.ID with identity from DB
 	return db.Cn.Save(&workout).Error
 }
