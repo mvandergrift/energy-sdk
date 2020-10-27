@@ -26,15 +26,17 @@ import (
 const defaultHoursBack = 144
 
 func Handler(ctx context.Context, detail interface{}) error {
+	log.Println("Executing AWS handler")
 	var (
 		err error
 	)
 
+	debugFlag := false
 	startDate := ""
 	endDate := ""
 
-	var debugFlag bool
 	if strings.ToLower(os.Getenv("DEBUG")) == "true" {
+		log.Println("Debug mode activated")
 		debugFlag = true
 	}
 

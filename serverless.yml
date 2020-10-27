@@ -12,7 +12,7 @@ provider:
             - subnet-09b8d868e87c9604f
             - subnet-000f2ba0154516547
     environment:
-        DEBUG: FALSE
+        DEBUG: false
         DB_HOST: db.strategic-dev.com
         DB_USER: energy
         DB_PWD: secret123
