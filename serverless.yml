@@ -3,7 +3,7 @@ service: energy-sdk
 provider:
     name: aws
     runtime: go1.x
-    memorySize: 512
+    memorySize: 128
     timeout: 60
     vpc:
         securityGroupIds:
