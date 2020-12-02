@@ -1,11 +1,18 @@
-# energy-sdk
+# Fortitude SDK Integration
+### Facilitates integration of Fortitue with external API providers
 
-## Supports integration of Energy with 3rd party data sources
+Integrate external health, nutrition, activity and lifestyle data with Fortitude project.
+Lightweight, modular process designed to leverage zero cost [_free-tier_] serverless facilities.
 
-Integrates workout & activity data from 3rd party providers to ensure that the Energy appliaction is constantly updated with the latest data from other sites, apps, and IoT providers.
+#### Planned modules
+-   Apple Health (in progress, working)
+-   Withing's Healthmate (phase 1 complete)
+-   Fitbit (planning stage)
 
-### Supports
+#### Supported cloud providers
+- AWS [free-tier support confirmed]
+- Google Compute
+- Microsoft Azure
 
--   Apple Health
--   Healthmate
--   Fitbit
+---
+[Fortitude Project Status](https://strategic-dev.com/fortitude#sdk)
