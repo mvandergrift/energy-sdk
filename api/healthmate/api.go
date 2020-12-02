@@ -10,18 +10,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload" // autoload configuration
 
 	"github.com/jinzhu/gorm"
+	"golang.org/x/oauth2"
+
+	"github.com/mvandergrift/energy-sdk/api"
 	"github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
-	"golang.org/x/oauth2"
 )
 
 const debug = false
+
+type Client api.Client // allow receivers on shared Client definition
 
 var (
 	// DefaultScopes is describes all available Health Mate scopes.
@@ -33,32 +36,9 @@ var (
 	HealthMateState string
 )
 
-func init() {
-	var err error
-
-	HealthMateState, err = randState()
-	if err != nil {
-		panic(err)
-	}
-}
-
-// randState randomly generates a base64 encoded string of
-// 10 bytes
-func randState() (state string, err error) {
-	buffer := make([]byte, 10)
-	_, err = rand.Read(buffer)
-	return base64.URLEncoding.EncodeToString(buffer), err
-}
-
-// Client provides methods to to interact with the Health Mate API
-type Client struct {
-	OAuth2Config *oauth2.Config
-	Timeout      time.Duration
-}
-
 // NewClient instantiates a new client to interact with the Health Mate API. Please
 // refer to the official Withings documentation to obtain the required parameters
-func NewClient(clientID, clientSecret, redirectURL string) Client {
+func NewClient(clientID, clientSecret, redirectURL string) api.ApiClient {
 	return Client{
 		OAuth2Config: &oauth2.Config{
 			ClientID:     clientID,
@@ -71,27 +51,13 @@ func NewClient(clientID, clientSecret, redirectURL string) Client {
 	}
 }
 
-// SetScopes is a variadic function that sets the required scopes
-// for your application for authentication with users.
-// Default behaviour is to use all scopes available.
-func (c *Client) SetScopes(scopes ...string) {
-	formatted := strings.Join(scopes, ",")
-
-	c.OAuth2Config.Scopes = []string{formatted}
-}
-
-// getContext creates a context
-func (c *Client) getContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), c.Timeout)
-}
-
 // GetAuthCodeURL obtains the user authentication URL
-func (c *Client) GetAuthCodeURL() string {
+func (c Client) GetAuthCodeURL() string {
 	return c.OAuth2Config.AuthCodeURL(HealthMateState)
 }
 
 // GetAccessToken obtains the access token for the authenticated user
-func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
+func (c Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 	ctx, cancel := c.getContext()
 	defer cancel()
 
@@ -100,24 +66,8 @@ func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 	return token, err
 }
 
-/*
-Returns a new HTTPClient based on the Healthmate OAuth2 client & configurations. Uses
-the cachedTokenPath to load and store the access token needed for api authentication
-*/
-func NewHTTPClient(c Client) (*http.Client, error) {
-	db := getDb()
-	token, err := auth.LoadToken(db)
-	if err != nil {
-		return nil, err
-	}
-
-	tokenSource := auth.RefreshToken(token, c.OAuth2Config, db)
-	client := oauth2.NewClient(context.Background(), *tokenSource)
-	return client, nil
-}
-
-func ProcessRequest(hc Client, payload url.Values, v interface{}) error {
-	client, err := NewHTTPClient(hc)
+func (hc Client) ProcessRequest(payload url.Values, v interface{}) error {
+	client, err := newHTTPClient(hc)
 	if err != nil {
 		return fmt.Errorf("NewHTTPClient %w", err)
 	}
@@ -149,6 +99,43 @@ func ProcessRequest(hc Client, payload url.Values, v interface{}) error {
 	return nil
 }
 
+func init() {
+	var err error
+
+	HealthMateState, err = randState()
+	if err != nil {
+		panic(err)
+	}
+}
+
+// randState randomly generates a base64 encoded string of 10 bytes
+func randState() (state string, err error) {
+	buffer := make([]byte, 10)
+	_, err = rand.Read(buffer)
+	return base64.URLEncoding.EncodeToString(buffer), err
+}
+
+/*
+Returns a new HTTPClient based on the Healthmate OAuth2 client & configurations. Uses
+the cachedTokenPath to load and store the access token needed for api authentication
+*/
+func newHTTPClient(c Client) (*http.Client, error) {
+	db := getDb()
+	token, err := auth.LoadToken(db)
+	if err != nil {
+		return nil, err
+	}
+
+	tokenSource := auth.RefreshToken(token, c.OAuth2Config, db)
+	client := oauth2.NewClient(context.Background(), *tokenSource)
+	return client, nil
+}
+
+// getContext creates a context
+func (c *Client) getContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), c.Timeout)
+}
+
 func getDb() *gorm.DB {
 	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), debug)
 	if err != nil {
@@ -157,3 +144,12 @@ func getDb() *gorm.DB {
 
 	return db
 }
+
+// setScopes is a variadic function that sets the required scopes
+// for your application for authentication with users.
+// Default behaviour is to use all scopes available.
+// func (c *Client) setScopes(scopes ...string) {
+// 	formatted := strings.Join(scopes, ",")
+
+// 	c.OAuth2Config.Scopes = []string{formatted}
+// }
