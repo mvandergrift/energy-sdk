@@ -15,9 +15,10 @@ import (
 	_ "github.com/joho/godotenv/autoload" // autoload configuration
 	"golang.org/x/oauth2"
 
+	"github.com/mvandergrift/energy-sdk/api"
+	"github.com/mvandergrift/energy-sdk/api/healthmate"
 	tokenAuth "github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
-	"github.com/mvandergrift/energy-sdk/healthmate"
 
 	"github.com/mvandergrift/energy-sdk/model"
 	"github.com/mvandergrift/energy-sdk/repo"
@@ -42,7 +43,7 @@ func Handler(ctx context.Context, detail interface{}) error {
 
 	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), debugFlag)
 	check("OpenCn", err)
-	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
+	hc := apiFactory("healthmate", os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
 
 	var result []model.Export
 	measure, err := getMeasure(startDate, endDate, hc)
@@ -77,7 +78,7 @@ func Handler(ctx context.Context, detail interface{}) error {
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func getWorkouts(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
+func getWorkouts(startDate string, endDate string, hc api.ApiClient) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
 	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
@@ -91,7 +92,7 @@ func getWorkouts(startDate string, endDate string, hc healthmate.Client) ([]mode
 	}
 
 	var result healthmate.WorkoutResult
-	err := healthmate.ProcessRequest(hc, payload, &result)
+	err := hc.ProcessRequest(payload, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +106,7 @@ func getWorkouts(startDate string, endDate string, hc healthmate.Client) ([]mode
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func getMeasure(startDate string, endDate string, hc healthmate.Client) ([]model.Export, error) {
+func getMeasure(startDate string, endDate string, hc api.ApiClient) ([]model.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getmeas")
 	payload.Set("meastypes", "1,6,4,11")
@@ -123,7 +124,7 @@ func getMeasure(startDate string, endDate string, hc healthmate.Client) ([]model
 
 	var result healthmate.MeasureResult
 	// todo #9 Capture and return error to caller @mvandergrift
-	check("ProcessHealthmateRequest", healthmate.ProcessRequest(hc, payload, &result))
+	check("ProcessHealthmateRequest", hc.ProcessRequest(payload, &result))
 
 	var retval []model.Export
 	for _, group := range result.Body.Measuregrps {
@@ -166,7 +167,8 @@ func start() {
 
 	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), *debugFlag)
 	check("OpenCn", err)
-	hc := healthmate.NewClient(os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
+
+	hc := apiFactory("healthmate", os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
 
 	if *getNewAuth { // todo #4 Transfer api authentication to user facing application @mvandergrift
 		fmt.Println("Visit link to authorize account: ", hc.GetAuthCodeURL())
@@ -208,6 +210,10 @@ func start() {
 			panic(fmt.Sprintf("No handler for model.Export type %v", modelExport))
 		}
 	}
+}
+
+func apiFactory(provider string, clientID string, clientSecret string, callbackUrl string) api.ApiClient {
+	return healthmate.NewClient(clientID, clientSecret, callbackUrl)
 }
 
 func check(subject string, err error) {
