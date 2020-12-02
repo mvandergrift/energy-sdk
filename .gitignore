@@ -24,6 +24,7 @@ bin/
 # Secrets and other private files
 .env
 .env.local
+serverless.yaml
 withing.json
 result.json
 debug.json
