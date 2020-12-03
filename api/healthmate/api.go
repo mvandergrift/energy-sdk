@@ -39,7 +39,7 @@ var (
 // NewClient instantiates a new client to interact with the Health Mate API. Please
 // refer to the official Withings documentation to obtain the required parameters
 func NewClient(clientID, clientSecret, redirectURL string) api.ApiClient {
-	return Client{
+	return &Client{
 		OAuth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
@@ -52,12 +52,12 @@ func NewClient(clientID, clientSecret, redirectURL string) api.ApiClient {
 }
 
 // GetAuthCodeURL obtains the user authentication URL
-func (c Client) GetAuthCodeURL() string {
+func (c *Client) GetAuthCodeURL() string {
 	return c.OAuth2Config.AuthCodeURL(HealthMateState)
 }
 
 // GetAccessToken obtains the access token for the authenticated user
-func (c Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
+func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 	ctx, cancel := c.getContext()
 	defer cancel()
 

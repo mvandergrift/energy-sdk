@@ -25,7 +25,7 @@ var AppleHealthEndpoint = oauth2.Endpoint{
 }
 
 func NewClient(clientID string, clientSecret string, redirectURL string) api.ApiClient {
-	return Client{
+	x := &Client{
 		OAuth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
@@ -35,15 +35,17 @@ func NewClient(clientID string, clientSecret string, redirectURL string) api.Api
 		},
 		Timeout: 5 * time.Second,
 	}
+
+	return x
 }
 
 // GetAuthCodeURL obtains the user authentication URL
-func (c Client) GetAuthCodeURL() string {
+func (c *Client) GetAuthCodeURL() string {
 	return "Not Implemented"
 }
 
 // GetAccessToken obtains the access token for the authenticated user
-func (c Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
+func (c *Client) GetAccessToken(code string) (token *oauth2.Token, err error) {
 	return nil, nil
 }
 
