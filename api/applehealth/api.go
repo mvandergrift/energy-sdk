@@ -1,8 +1,6 @@
 package applehealth
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"net/url"
 	"time"
 
@@ -55,14 +53,8 @@ func (hc Client) ProcessRequest(payload url.Values, v interface{}) error {
 
 func init() {
 	var err error
-	AppleHealthState, err = randState()
+	AppleHealthState, err = api.RandState()
 	if err != nil {
 		panic(err)
 	}
-}
-
-func randState() (string, error) {
-	buffer := make([]byte, 10)
-	_, err := rand.Read(buffer)
-	return base64.URLEncoding.EncodeToString(buffer), err
 }
