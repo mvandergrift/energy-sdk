@@ -2,27 +2,20 @@ package healthmate
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload" // autoload configuration
 
-	"github.com/jinzhu/gorm"
 	"golang.org/x/oauth2"
 
 	"github.com/mvandergrift/energy-sdk/api"
 	"github.com/mvandergrift/energy-sdk/auth"
-	"github.com/mvandergrift/energy-sdk/driver"
 )
-
-const debug = false
 
 type Client api.Client // allow receivers on shared Client definition
 
@@ -102,17 +95,10 @@ func (hc Client) ProcessRequest(payload url.Values, v interface{}) error {
 func init() {
 	var err error
 
-	HealthMateState, err = randState()
+	HealthMateState, err = api.RandState()
 	if err != nil {
 		panic(err)
 	}
-}
-
-// randState randomly generates a base64 encoded string of 10 bytes
-func randState() (state string, err error) {
-	buffer := make([]byte, 10)
-	_, err = rand.Read(buffer)
-	return base64.URLEncoding.EncodeToString(buffer), err
 }
 
 /*
@@ -120,7 +106,7 @@ Returns a new HTTPClient based on the Healthmate OAuth2 client & configurations.
 the cachedTokenPath to load and store the access token needed for api authentication
 */
 func newHTTPClient(c Client) (*http.Client, error) {
-	db := getDb()
+	db := api.GetDb()
 	token, err := auth.LoadToken(db)
 	if err != nil {
 		return nil, err
@@ -131,18 +117,9 @@ func newHTTPClient(c Client) (*http.Client, error) {
 	return client, nil
 }
 
-// getContext creates a context
+// GetContext returns a new context initalized with the timeout and cancelation function
 func (c *Client) getContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), c.Timeout)
-}
-
-func getDb() *gorm.DB {
-	db, err := driver.OpenCn(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PWD"), os.Getenv("DB_DATABASE"), debug)
-	if err != nil {
-		panic(fmt.Sprintf("Cannot connect to token DB: %v", err))
-	}
-
-	return db
 }
 
 // setScopes is a variadic function that sets the required scopes

@@ -19,7 +19,6 @@ import (
 	"github.com/mvandergrift/energy-sdk/api/healthmate"
 	tokenAuth "github.com/mvandergrift/energy-sdk/auth"
 	"github.com/mvandergrift/energy-sdk/driver"
-
 	"github.com/mvandergrift/energy-sdk/model"
 	"github.com/mvandergrift/energy-sdk/repo"
 )
@@ -45,7 +44,7 @@ func Handler(ctx context.Context, detail interface{}) error {
 	check("OpenCn", err)
 	hc := apiFactory("healthmate", os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"), os.Getenv("CALLBACK_URL"))
 
-	var result []model.Export
+	var result []api.Export
 	measure, err := getMeasure(startDate, endDate, hc)
 	check("GetMeasure", err)
 	result = append(measure, result...)
@@ -78,7 +77,7 @@ func Handler(ctx context.Context, detail interface{}) error {
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func getWorkouts(startDate string, endDate string, hc api.ApiClient) ([]model.Export, error) {
+func getWorkouts(startDate string, endDate string, hc api.ApiClient) ([]api.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getworkouts")
 	payload.Set("data_fields", "calories,effduration,intensity,manual_distance,manual_calories,hr_average,hr_min,hr_max,steps,distance,elevation,pause,hr_zone_0,hr_zone_1,hr_zone_2,hr_zone_3")
@@ -97,7 +96,7 @@ func getWorkouts(startDate string, endDate string, hc api.ApiClient) ([]model.Ex
 		return nil, err
 	}
 
-	retval := make([]model.Export, len(result.Body.Series))
+	retval := make([]api.Export, len(result.Body.Series))
 	for k, v := range result.Body.Series {
 		retval[k] = v
 	}
@@ -106,7 +105,7 @@ func getWorkouts(startDate string, endDate string, hc api.ApiClient) ([]model.Ex
 }
 
 // todo #1 Factory pattern supports multiple data vendors @mvandergrift
-func getMeasure(startDate string, endDate string, hc api.ApiClient) ([]model.Export, error) {
+func getMeasure(startDate string, endDate string, hc api.ApiClient) ([]api.Export, error) {
 	payload := url.Values{}
 	payload.Set("action", "getmeas")
 	payload.Set("meastypes", "1,6,4,11")
@@ -126,7 +125,7 @@ func getMeasure(startDate string, endDate string, hc api.ApiClient) ([]model.Exp
 	// todo #9 Capture and return error to caller @mvandergrift
 	check("ProcessHealthmateRequest", hc.ProcessRequest(payload, &result))
 
-	var retval []model.Export
+	var retval []api.Export
 	for _, group := range result.Body.Measuregrps {
 		for _, measure := range group.Measures {
 			measure.Date = group.Date
@@ -181,7 +180,7 @@ func start() {
 		check("SaveToken", err)
 	}
 
-	var result []model.Export
+	var result []api.Export
 	if *typeFilter == "" || *typeFilter == "measure" {
 		measure, err := getMeasure(*startDate, *endDate, hc)
 		check("GetMeasure", err)
